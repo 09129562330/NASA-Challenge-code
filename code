@@ -1,0 +1,99 @@
+%matplotlib inline
+import pandas as pd
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+import xgboost as xgb
+import matplotlib.pyplot as plt
+
+df = pd.read_csv("nasa.csv")
+
+y = df['koi_disposition']
+le = LabelEncoder()
+y = le.fit_transform(y)
+
+X = df.drop(columns=['kepoi_name', 'kepler_name', 'rowid', 'kepid', 'koi_disposition', 'koi_pdisposition'])
+X = pd.get_dummies(X)
+
+x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+xgb_model = xgb.XGBClassifier(
+    n_estimators=300,
+    max_depth=10,
+    learning_rate=0.05,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    random_state=42,
+    eval_metric='mlogloss'
+)
+xgb_model.fit(x_train, y_train)
+
+y_pred = xgb_model.predict(x_test)
+print("✅ Model trained. Test accuracy:", accuracy_score(y_test, y_pred))
+
+
+def predict_planet_status(planet_name):
+
+    row = df[df['kepoi_name'].str.lower() == planet_name.lower()]
+    
+    if row.empty:
+        print(f"ℹ️ Planet {planet_name} not found in dataset.")
+        print("👉 Please provide the required information:")
+
+       
+        koi_period = float(input("Orbital period (days): "))
+        koi_prad = float(input("Planetary radius (Earth radii): "))
+        koi_teq = float(input("Equilibrium temperature (K): "))
+        koi_smass = float(input("Stellar mass (solar masses): "))
+        koi_srad = float(input("Stellar radius (solar radii): "))
+
+       
+        X_row = pd.DataFrame([{
+            "koi_period": koi_period,
+            "koi_prad": koi_prad,
+            "koi_teq": koi_teq,
+            "koi_smass": koi_smass,
+            "koi_srad": koi_srad
+        }])
+
+        for col in X.columns:
+            if col not in X_row.columns:
+                X_row[col] = 0
+        X_row = X_row[X.columns]
+
+    else:
+    
+        X_row = row.drop(columns=['kepoi_name','kepler_name','rowid','kepid','koi_disposition','koi_pdisposition'])
+        X_row = pd.get_dummies(X_row)
+        missing_cols = set(X.columns) - set(X_row.columns)
+        for col in missing_cols:
+            X_row[col] = 0
+        X_row = X_row[X.columns]
+    
+   
+    pred_label = xgb_model.predict(X_row)[0]
+    pred_class = le.inverse_transform([pred_label])[0]
+
+    if pred_class == "CONFIRMED":
+        print(f"✅ Planet {planet_name} is an EXOPLANET (Confirmed).")
+    else:
+        print(f"❌ Planet {planet_name} is NOT a confirmed exoplanet ({pred_class}).")
+
+    if not row.empty:
+        features = X_row.iloc[0]
+        features = features[features.apply(lambda x: isinstance(x, (int, float)))]
+        features.plot(kind='bar', figsize=(12,5))
+        plt.title(f"Features of Planet {planet_name} (raw data)")
+        plt.ylabel("Value")
+        plt.show()
+
+
+print("🌌 Exoplanet Checker")
+print("Type 'exit' to quit.")
+
+while True:
+    planet_name = input("\nWhich planet do you have in mind? ")
+    if planet_name.lower() == "exit":
+        print("👋 Goodbye!")
+        break
+    predict_planet_status(planet_name)
